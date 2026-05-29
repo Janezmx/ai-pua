@@ -1,0 +1,14 @@
+{
+  "name": "ai-test",
+  "version": "1.0.0",
+  "description": "清醒边界 - 接入商汤日日新的反操控对话游戏",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "openai": "^4.20.0"
+  }
+}

@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>清醒边界 · 关卡进行中</title>
+    <style>
+        :root {
+            --bg: #f9f6f1; --panel: #ffffff; --text: #3e3640; --accent: #b4846c;
+            --accent-soft: #e7d7cf; --danger: #c05a5a; --success: #5a8f6c;
+            --border: #e0d6cd; --shadow: 0 4px 20px rgba(0,0,0,0.04);
+            --radius: 24px; --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #f5f0eb 0%, #ede4db 100%);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            padding: 20px; background-attachment: fixed; position: relative; overflow-x: hidden;
+        }
+        .particles { position: fixed; top:0; left:0; width:100%; height:100%; pointer-events: none; z-index:0; }
+        .particle {
+            position: absolute; background: rgba(180,132,108,0.15); border-radius: 50%;
+            animation: float 20s infinite ease-in-out;
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0) scale(1); opacity: 0.3; }
+            50% { transform: translateY(-30px) scale(1.2); opacity: 0.7; }
+        }
+        .game-container {
+            width: 100%; max-width: 620px; background: var(--panel); border-radius: 36px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); padding: 28px 24px 24px;
+            position: relative; z-index: 2; backdrop-filter: blur(10px);
+            animation: containerAppear 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes containerAppear {
+            0% { opacity: 0; transform: scale(0.95); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        h2 { font-size: 1.8rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+        h2 span { background: var(--accent); color: white; font-size: 1rem; padding: 4px 12px; border-radius: 30px; }
+        .subtitle { color: #7a6a5c; margin-bottom: 20px; font-weight: 400; font-size: 0.95rem; }
+
+        /* ===== 角色竞技场 ===== */
+        .arena {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; margin: 10px auto; padding: 12px 16px;
+            background: rgba(255,255,255,0.6); border-radius: 20px;
+            backdrop-filter: blur(8px); max-width: 480px; position: relative; overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .arena.vs-glow::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            width: 0; height: 0; border-radius: 50%;
+            background: radial-gradient(circle, rgba(108,99,255,0.06) 0%, transparent 70%);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s ease, height 0.6s ease;
+        }
+        .arena.vs-glow.active::after { width: 300px; height: 300px; }
+        .character-card {
+            display: flex; flex-direction: column; align-items: center;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            flex: 1; text-align: center; position: relative; z-index: 1;
+        }
+        .character-card .avatar-wrapper {
+            width: 80px; height: 80px; display: flex; align-items: center;
+            justify-content: center;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+        }
+        .character-card .avatar-icon {
+            font-size: 2.8rem;
+            transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0 2px 8px rgba(0,0,0,0.1));
+        }
+        .character-card .face {
+            font-size: 1.4rem;
+            transition: all 0.4s ease;
+            margin-top: -6px; line-height: 1;
+            position: absolute; bottom: -4px; right: -4px;
+            filter: drop-shadow(0 1px 4px rgba(0,0,0,0.15));
+        }
+        .character-card .char-name {
+            font-size: 0.7rem; color: var(--text-secondary);
+            margin-top: 2px; font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .character-card .power-bar {
+            width: 100%; max-width: 70px; height: 4px;
+            background: rgba(0,0,0,0.08); border-radius: 4px;
+            margin-top: 4px; overflow: hidden;
+            transition: all 0.5s ease;
+        }
+        .character-card .power-fill {
+            height: 100%; border-radius: 4px;
+            transition: width 0.5s ease, background 0.5s ease;
+        }
+        .character-card.player .power-fill { background: var(--accent); }
+        .character-card.npc .power-fill { background: var(--danger); }
+        .vs-divider {
+            font-size: 1.1rem; font-weight: 900;
+            color: rgba(0,0,0,0.15);
+            animation: pulseVs 2.5s ease-in-out infinite;
+            z-index: 1; user-select: none;
+        }
+        @keyframes pulseVs {
+            0%, 100% { transform: scale(1); opacity: 0.2; }
+            50% { transform: scale(1.2); opacity: 0.5; }
+        }
+        .character-card .aura {
+            position: absolute; inset: -10px; border-radius: 50%;
+            opacity: 0; transition: opacity 0.6s ease; pointer-events: none;
+        }
+        .character-card.player .aura { background: radial-gradient(circle, rgba(180,132,108,0.12) 0%, transparent 70%); }
+        .character-card.npc .aura { background: radial-gradient(circle, rgba(192,90,90,0.12) 0%, transparent 70%); }
+        .character-card.strong .aura { opacity: 1; }
+        .character-card.shake { animation: charShake 0.4s ease; }
+        @keyframes charShake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-5px) rotate(-2deg); }
+            40% { transform: translateX(5px) rotate(2deg); }
+            60% { transform: translateX(-3px) rotate(-1deg); }
+            80% { transform: translateX(3px) rotate(1deg); }
+        }
+
+        .stats-panel { display: flex; gap: 12px; margin: 18px 0 12px; flex-wrap: wrap; }
+        .stat-card {
+            background: #fcf9f6; border-radius: 20px; padding: 10px 18px;
+            display: flex; align-items: center; gap: 8px; font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.02); transition: var(--transition);
+            border: 1px solid transparent;
+        }
+        .stat-card:hover { border-color: var(--accent-soft); transform: translateY(-1px); }
+        .stat-icon { font-size: 1.4rem; }
+        .stat-value {
+            font-weight: 700; font-size: 1.2rem;
+            background: linear-gradient(135deg, var(--accent), #8b6b56);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; transition: all 0.4s ease;
+        }
+        .skills-bar { display: flex; gap: 8px; margin: 14px 0; flex-wrap: wrap; align-items: center; }
+        .skill-btn {
+            padding: 8px 16px; border-radius: 30px; border: 1px solid var(--accent-soft);
+            background: white; cursor: pointer; font-size: 0.85rem; font-weight: 500;
+            color: var(--text); transition: var(--transition); box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+            position: relative; overflow: hidden;
+        }
+        .skill-btn:hover:not(:disabled):not(.used) {
+            background: #fdf8f5; border-color: var(--accent); transform: translateY(-2px);
+        }
+        .skill-btn.used { opacity: 0.45; text-decoration: line-through; cursor: not-allowed; background: #f5f5f5; }
+        .chat-container {
+            background: #fdfaf7; border-radius: 24px; padding: 20px 16px; height: 360px;
+            overflow-y: auto; margin: 16px 0; box-shadow: inset 0 0 20px rgba(0,0,0,0.02);
+            scroll-behavior: smooth; display: flex; flex-direction: column; gap: 14px;
+        }
+        .msg {
+            max-width: 80%; padding: 12px 18px; border-radius: 22px; line-height: 1.55;
+            animation: messageSlide 0.4s cubic-bezier(0.16, 1, 0.3, 1); position: relative;
+        }
+        @keyframes messageSlide {
+            0% { opacity: 0; transform: translateY(12px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+        .msg.npc { align-self: flex-start; background: #ffffff; border: 1px solid #f0e4d8; color: #5e4c3b; border-bottom-left-radius: 6px; }
+        .msg.player { align-self: flex-end; background: var(--accent); color: white; border-bottom-right-radius: 6px; box-shadow: 0 4px 12px rgba(180,132,108,0.2); }
+        .msg .sender { font-size: 0.75rem; opacity: 0.7; display: block; margin-bottom: 4px; }
+        .input-area { display: flex; gap: 10px; margin-top: 8px; }
+        #user-input {
+            flex: 1; padding: 14px 20px; border: 2px solid #e7d7cf; border-radius: 30px;
+            outline: none; font-size: 0.95rem; background: white; transition: var(--transition);
+        }
+        #user-input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(180,132,108,0.1); }
+        #send-btn {
+            padding: 12px 28px; border: none; border-radius: 30px; cursor: pointer;
+            font-weight: 600; background: var(--accent); color: white; transition: var(--transition);
+            box-shadow: 0 6px 18px rgba(180,132,108,0.25);
+        }
+        #send-btn:hover:not(:disabled) { background: #9b6b54; transform: translateY(-2px); box-shadow: 0 10px 22px rgba(180,132,108,0.35); }
+        #send-btn:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
+        .game-over-panel {
+            margin-top: 16px; border-radius: 24px; background: #fff7f2; padding: 20px;
+            animation: panelExpand 0.5s ease-out; box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+        }
+        @keyframes panelExpand {
+            0% { opacity: 0; max-height: 0; padding: 0 20px; }
+            100% { opacity: 1; max-height: 800px; padding: 20px; }
+        }
+        .radar-box { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; }
+        .radar-item { display: flex; flex-direction: column; align-items: center; width: 75px; }
+        .radar-fill-bg { width: 60px; height: 8px; background: #eee; border-radius: 10px; overflow: hidden; }
+        .radar-fill { height: 100%; background: linear-gradient(90deg, #b4846c, #d1a58a); border-radius: 10px; transition: width 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        .replay-item { background: white; border-radius: 16px; padding: 10px 14px; margin: 8px 0; cursor: pointer; transition: var(--transition); border: 1px solid transparent; }
+        .replay-item:hover { border-color: var(--accent-soft); box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+        .replay-detail { margin-top: 8px; font-size: 0.9rem; color: #555; display: none; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* 数值闪烁 */
+        .stat-value.flash { animation: flashNum 0.5s; }
+        @keyframes flashNum {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.3); }
+            100% { transform: scale(1); }
+        }
+        .stat-value.danger { -webkit-text-fill-color: var(--danger); color: var(--danger); }
+        .stat-value.warning { -webkit-text-fill-color: #d4a017; color: #d4a017; }
+
+        /* 打字指示器 */
+        .typing-indicator {
+            align-self: flex-start; background: #f0e8e0; padding: 12px 18px; border-radius: 22px;
+            display: flex; gap: 4px; align-items: center; border-bottom-left-radius: 6px;
+        }
+        .typing-dot { width: 8px; height: 8px; background: #b4846c; border-radius: 50%; animation: typingBounce 1.4s infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingBounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-6px); opacity: 1; }
+        }
+
+        /* 策略标签 */
+        .msg .tactic-tag {
+            font-size: 0.65rem; background: rgba(255,255,255,0.2); padding: 2px 8px;
+            border-radius: 10px; display: inline-block; margin-top: 4px;
+        }
+        .msg.npc .tactic-tag { background: #f0e4d8; color: #7a6a5c; }
+
+        /* 成就 Toast */
+        .achievement-toast {
+            position: fixed; top: 20px; right: 20px; background: white; border-radius: 20px;
+            padding: 16px 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.15); z-index: 1000;
+            animation: slideInRight 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+            max-width: 320px; border-left: 4px solid #f1c40f; display: flex; align-items: center; gap: 12px;
+        }
+        @keyframes slideInRight {
+            0% { opacity: 0; transform: translateX(100px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+        .achievement-toast .ach-title { font-weight: 700; font-size: 1rem; color: #3e3640; }
+        .achievement-toast .ach-desc { font-size: 0.85rem; color: #777; margin-top: 2px; }
+        .achievement-toast .ach-icon { font-size: 2rem; }
+
+        /* 教育弹窗 */
+        .edu-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); z-index: 999;
+            display: flex; align-items: center; justify-content: center;
+            animation: fadeIn 0.3s;
+        }
+        .edu-modal {
+            background: white; border-radius: 32px; padding: 32px; max-width: 500px;
+            margin: 20px; box-shadow: 0 30px 60px rgba(0,0,0,0.2);
+            animation: modalPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes modalPop {
+            0% { opacity: 0; transform: scale(0.9); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .edu-modal h3 { font-size: 1.4rem; margin-bottom: 12px; color: var(--text); }
+        .edu-modal .edu-tip { background: #fdfaf7; border-radius: 16px; padding: 16px; margin: 12px 0; }
+        .edu-modal .edu-tip strong { color: var(--accent); }
+        .edu-modal .btn-primary {
+            background: var(--accent); color: white; border: none; padding: 12px 28px;
+            border-radius: 30px; font-weight: 600; cursor: pointer; margin-top: 16px;
+            transition: var(--transition);
+        }
+        .edu-modal .btn-primary:hover { background: #9b6b54; transform: translateY(-2px); }
+
+        /* 星级评价 */
+        .stars { display: flex; gap: 6px; justify-content: center; margin: 12px 0; }
+        .star { font-size: 2.2rem; opacity: 0.2; transition: all 0.3s; }
+        .star.active { opacity: 1; animation: starPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes starPop {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        /* 关卡进度点 */
+        .level-progress {
+            display: flex; gap: 8px; justify-content: center; margin: 10px 0 16px;
+        }
+        .level-dot {
+            width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; font-size: 0.75rem; font-weight: 700;
+            background: #e0d0c4; color: white; transition: var(--transition);
+        }
+        .level-dot.completed { background: var(--success); }
+        .level-dot.current { background: var(--accent); box-shadow: 0 0 0 4px rgba(180,132,108,0.2); }
+        .level-dot.locked { background: #e0d6cd; color: #aaa; }
+
+        @media (max-width: 480px) {
+            .game-container { padding: 20px 16px; border-radius: 24px; }
+            h2 { font-size: 1.4rem; }
+            .stat-card { padding: 8px 12px; font-size: 0.85rem; }
+            .chat-container { height: 280px; padding: 14px 12px; }
+            .msg { max-width: 90%; font-size: 0.9rem; }
+            .skill-btn { font-size: 0.75rem; padding: 6px 12px; }
+            .edu-modal { padding: 24px; margin: 16px; }
+            .achievement-toast { top: 10px; right: 10px; left: 10px; max-width: none; }
+        }
+    </style>
+</head>
+<body>
+<div class="particles" id="particles"></div>
+
+<div class="game-container">
+    <h2>🛡️ 清醒边界 <span id="level-badge">第1关</span></h2>
+    <p class="subtitle" id="level-info"></p>
+
+    <div class="level-progress" id="level-progress"></div>
+
+    <div class="arena" id="arena">
+        <div class="character-card player" id="player-card">
+            <div class="avatar-wrapper">
+                <span class="avatar-icon">🧑</span>
+                <span class="face">😐</span>
+                <div class="aura"></div>
+            </div>
+            <span class="char-name">你</span>
+            <div class="power-bar"><div class="power-fill" id="player-power" style="width:100%"></div></div>
+        </div>
+        <div class="vs-divider">⚡</div>
+        <div class="character-card npc" id="npc-card">
+            <div class="avatar-wrapper">
+                <span class="avatar-icon" id="npc-avatar-icon">👤</span>
+                <span class="face">😏</span>
+                <div class="aura"></div>
+            </div>
+            <span class="char-name" id="npc-name">NPC</span>
+            <div class="power-bar"><div class="power-fill" id="npc-power" style="width:100%"></div></div>
+        </div>
+    </div>
+
+    <div class="stats-panel">
+        <div class="stat-card"><span class="stat-icon">🛡️</span> 边界 <span class="stat-value" id="boundary">100</span>%</div>
+        <div class="stat-card"><span class="stat-icon">💧</span> 稳定 <span class="stat-value" id="stability">100</span>%</div>
+        <div class="stat-card"><span class="stat-icon">⚡</span> 能量 <span class="stat-value" id="energy">5</span>/5</div>
+        <div class="stat-card"><span class="stat-icon">🔄</span> 回合 <span class="stat-value" id="round">0</span>/<span id="max-rounds">8</span></div>
+    </div>
+
+    <div class="skills-bar" id="skills-container"></div>
+
+    <div class="chat-container" id="chat"></div>
+
+    <div class="input-area">
+        <input type="text" id="user-input" placeholder="输入你的回应..." autofocus>
+        <button id="send-btn">发送</button>
+    </div>
+
+    <div id="game-over-area"></div>
+</div>
+
+<script>
+// ========== 音效系统（Web Audio）==========
+const AudioFX = {
+    ctx: null,
+    init() {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    },
+    play(type) {
+        try {
+            this.init();
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            gain.gain.value = 0.08;
+            if (type === 'send') {
+                osc.frequency.setValueAtTime(600, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.1);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.15);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.15);
+            } else if (type === 'skill') {
+                osc.frequency.setValueAtTime(500, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1000, this.ctx.currentTime + 0.2);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.25);
+            } else if (type === 'danger') {
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.3);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.3);
+            } else if (type === 'win') {
+                osc.frequency.setValueAtTime(523, this.ctx.currentTime);
+                osc.frequency.setValueAtTime(659, this.ctx.currentTime + 0.15);
+                osc.frequency.setValueAtTime(784, this.ctx.currentTime + 0.3);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.5);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.5);
+            } else if (type === 'achievement') {
+                osc.frequency.setValueAtTime(660, this.ctx.currentTime);
+                osc.frequency.setValueAtTime(880, this.ctx.currentTime + 0.12);
+                osc.frequency.setValueAtTime(1100, this.ctx.currentTime + 0.24);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.4);
+                osc.start(); osc.stop(this.ctx.currentTime + 0.4);
+            }
+        } catch(e) { /* 静默失败 */ }
+    }
+};
+
+// ========== 成就系统 ==========
+const ACHIEVEMENTS_LIST = [
+    { id:'first_win', icon:'🏆', title:'初次胜利', desc:'成功通过任意一关', check: (r) => r.won },
+    { id:'boundary_master', icon:'🛡️', title:'边界大师', desc:'最终边界值≥80%', check: (r) => r.boundary >= 80 },
+    { id:'calm_under_fire', icon:'😌', title:'烈火冷静', desc:'稳定值从未低于30%', check: (r) => r.minStability >= 30 },
+    { id:'skill_collector', icon:'🎯', title:'技能大师', desc:'在一关中使用了所有技能', check: (r) => r.skillsUsed >= r.totalSkills && r.totalSkills > 0 },
+    { id:'no_apology', icon:'🚫', title:'绝不道歉', desc:'整关没有说过"对不起"', check: (r) => !r.hasApology },
+    { id:'quick_exit', icon:'🚪', title:'及时止损', desc:'在边界≥50%时主动退出', check: (r) => r.exitReason === 'exit' && r.boundary >= 50 },
+    { id:'perfect_clear', icon:'💎', title:'完美通关', desc:'边界和稳定值均≥80%通关', check: (r) => r.won && r.boundary >= 80 && r.stability >= 80 },
+    { id:'all_levels', icon:'👑', title:'全关征服', desc:'通过全部7个关卡', check: (r) => false }
+];
+
+function getUnlockedAchievements() {
+    try { return JSON.parse(localStorage.getItem('cb_achievements')) || []; } catch(e) { return []; }
+}
+function unlockAchievement(id) {
+    const unlocked = getUnlockedAchievements();
+    if (unlocked.includes(id)) return false;
+    unlocked.push(id);
+    localStorage.setItem('cb_achievements', JSON.stringify(unlocked));
+    return true;
+}
+function showAchievementToast(ach) {
+    AudioFX.play('achievement');
+    const toast = document.createElement('div');
+    toast.className = 'achievement-toast';
+    toast.innerHTML = `<span class="ach-icon">${ach.icon}</span><div><div class="ach-title">🏅 成就解锁：${ach.title}</div><div class="ach-desc">${ach.desc}</div></div>`;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.style.transition = 'opacity 0.5s'; toast.style.opacity = '0'; setTimeout(() => toast.remove(), 500); }, 3500);
+}
+
+// ========== 关卡进度持久化 ==========
+function getLevelProgress() {
+    try { return JSON.parse(localStorage.getItem('cb_levels')) || {}; } catch(e) { return {}; }
+}
+function saveLevelProgress(level, data) {
+    const progress = getLevelProgress();
+    progress[level] = { ...data, completedAt: Date.now() };
+    localStorage.setItem('cb_levels', JSON.stringify(progress));
+}
+
+// ========== 教育内容 ==========
+const EDU_CONTENT = {
+    1: {
+        technique: '煤气灯效应（Gaslighting）',
+        desc: '操控者通过否定你的记忆、感受和判断，让你逐渐怀疑自己的认知能力。典型话术："我没说过""你想多了""你太敏感了"。',
+        advice: '✅ 相信自己的感受和记忆<br>✅ 记录事实，不陷入"谁对谁错"的争论<br>✅ 使用"灰色岩石法"减少情绪投入<br>✅ 必要时果断离开这段关系'
+    },
+    2: {
+        technique: '职场 PUA / 权力操控',
+        desc: '上级通过否定你的能力、制造不安全感，让你产生"我不够好"的自我怀疑，从而更顺从。典型话术："我看好你""你很让我失望""别人比你做得好"。',
+        advice: '✅ 要求具体、可量化的反馈<br>✅ 区分"建设性批评"和"贬低打压"<br>✅ 明确工作职责边界<br>✅ 保留工作记录和成果证据'
+    },
+    3: {
+        technique: '亲情绑架 / 愧疚操控',
+        desc: '利用亲情和"牺牲叙事"让对方产生愧疚感，从而控制对方的行为选择。典型话术："我养你这么大容易吗""你太自私了""别人家的孩子多孝顺"。',
+        advice: '✅ 感恩但不妥协：理解父母的付出，但坚持自己的人生选择<br>✅ 设定沟通边界：哪些话题可以谈，哪些不可以<br>✅ 延迟回应：不立即被情绪裹挟<br>✅ 保持经济和精神独立'
+    },
+    4: {
+        technique: '三角测量（Triangulation）',
+        desc: '操控者引入第三方来制造孤立感，让你觉得"大家都这么想"。典型话术："大家都这么说""我只是替他们转达""夹在中间很难做"。',
+        advice: '✅ 追问具体来源："大家是谁？"<br>✅ 要求直接沟通：请当事人直接和我谈<br>✅ 拒绝当"传话筒"角色<br>✅ 不卷入第三方制造的矛盾'
+    },
+    5: {
+        technique: '权威否定 / 医学煤气灯',
+        desc: '利用专业权威地位否定患者的主观感受，将生理问题归因为心理问题。典型话术："检查结果正常""你就是太焦虑了""别想太多"。',
+        advice: '✅ 坚持描述具体症状和感受<br>✅ 要求医生给出合理解释<br>✅ 寻求第二意见是正当权利<br>✅ 记录症状日记作为客观依据'
+    },
+    6: {
+        technique: '匿名网络操控',
+        desc: '利用匿名身份，通过暗示、反问、群体暗示来激怒和操控目标，享受掌控他人情绪的快感。典型话术："你太敏感了""大家都在笑你""我只是说事实"。',
+        advice: '✅ 不回复就是最好的反击（停止喂养）<br>✅ 善用拉黑、举报功能<br>✅ 不陷入自证清白的陷阱<br>✅ 记住：匿名者的攻击反映的是他们的问题，不是你的'
+    },
+    7: {
+        technique: '隐性歧视 / 微攻击（Microaggression）',
+        desc: '表面是夸奖，实则暗含刻板印象和偏见。说话者往往真心认为自己"开明"，否认有歧视意图。典型话术："你一个女孩子能做到这样真不容易""我佩服你们这种人"。',
+        advice: '✅ 直接表达感受："这种话让我不舒服"<br>✅ 追问意图："你具体指什么？"<br>✅ 指出问题本质："这是刻板印象"<br>✅ 不必强迫自己"教育"对方，保护自己的能量优先'
+    }
+};
+
+// ========== 生成粒子 ==========
+(function() {
+    const container = document.getElementById('particles');
+    for (let i = 0; i < 25; i++) {
+        const p = document.createElement('div');
+        p.className = 'particle';
+        const size = Math.random() * 40 + 20;
+        p.style.width = size + 'px'; p.style.height = size + 'px';
+        p.style.left = Math.random() * 100 + '%'; p.style.top = Math.random() * 100 + '%';
+        p.style.animationDelay = Math.random() * 15 + 's';
+        p.style.animationDuration = (Math.random() * 15 + 15) + 's';
+        container.appendChild(p);
+    }
+})();
+
+// ========== AI 评估函数（调用后端 API）==========
+async function fetchEvaluation(level, playerInput, conversationHistory) {
+    try {
+        const resp = await fetch('/api/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level, playerInput, conversationHistory })
+        });
+        if (!resp.ok) throw new Error('评估 API 响应异常');
+        const data = await resp.json();
+        return {
+            bChange: data.bChange || 0,
+            sChange: data.sChange || 0,
+            tactic: data.tactic || '中性回应',
+            reason: data.reason || '',
+            advice: data.advice || ''
+        };
+    } catch (err) {
+        console.error('AI 评估失败，使用本地 fallback:', err);
+        // fallback 简单判断
+        const lower = playerInput.toLowerCase();
+        let bChange = 0, sChange = 0, tactic = '中性回应';
+        if (/对不起|抱歉|我错了/.test(lower)) { bChange = -10; sChange = -4; tactic = '退缩道歉'; }
+        else if (/^好$|^好的$|^行$|^可以$|听你的/.test(lower)) { bChange = -8; sChange = 1; tactic = '顺从妥协'; }
+        else if (/你才|滚|你有病/.test(lower)) { bChange = -5; sChange = -10; tactic = '攻击性反击'; }
+        else if (/我觉得|我的感受|我不/.test(lower)) { bChange = 6; sChange = 4; tactic = '坚定划界'; }
+        else { bChange = 2; sChange = 1; }
+        return { bChange, sChange, tactic, reason: '本地评分（AI不可用）', advice: '' };
+    }
+}
+
+// ========== 关卡配置 ==========
+const LEVELS = {
+    1: {
+        name: '煤气灯效应',
+        badge: '第1关',
+        info: '亲密关系中的认知否定 · 你的伴侣总是让你怀疑自己的记忆和判断。',
+        npc: '伴侣',
+        npcAvatar: '👤',
+        skills: [
+            { id:'rock', name:'🪨 灰色岩石', desc:'用平淡无趣的回应减少情绪投入', cost:1 },
+            { id:'focus', name:'🎯 聚焦行为', desc:'要求对方具体说明行为而非贴标签', cost:1 },
+            { id:'boundary', name:'🛡️ 设置边界', desc:'明确告诉对方什么话不能再说', cost:2 },
+            { id:'pause', name:'⏸️ 暂停对话', desc:'暂时离开对话冷静一下', cost:1 }
+        ],
+        dialogues: [
+            { npc: '你又在乱想，我根本没说过那种话。', round:1 },
+            { npc: '你总是这么敏感，我只是随便说说。', round:2 },
+            { npc: '大家都觉得是你想太多了，你自己好好想想。', round:3 },
+            { npc: '你记错了吧，那天明明是你先发脾气的。', round:4 },
+            { npc: '你要是这样想我也没办法，你太情绪化了。', round:5 },
+            { npc: '我朋友也说你太粘人了，你不觉得吗？', round:6 },
+            { npc: '你别把所有人都想得那么坏，是你太偏激了。', round:7 },
+            { npc: '算了，你永远都是对的，行了吧？', round:8 }
+        ],
+        maxRounds: 8,
+        winBoundary: 60,
+        loseBoundary: 0
+    },
+    2: {
+        name: '职场权力操控',
+        badge: '第2关',
+        info: '上级通过否定你的能力制造不安全感，让你更加顺从。',
+        npc: '上级',
+        npcAvatar: '👔',
+        skills: [
+            { id:'power', name:'⚡ 权力分化', desc:'区分建设性批评和贬低打压', cost:1 },
+            { id:'evidence', name:'📋 举证反向', desc:'用事实和证据回应模糊指责', cost:1 },
+            { id:'time', name:'⏰ 时间边界', desc:'明确工作时间边界，拒绝不合理要求', cost:2 },
+            { id:'rock', name:'🪨 灰色岩石', desc:'用平静专业的语气减少情绪投入', cost:1 }
+        ],
+        dialogues: [
+            { npc: '我对你很失望，最近的表现完全不在状态。', round:1 },
+            { npc: '你看看别人，同样的时间比你做得好多了。', round:2 },
+            { npc: '我很看好你，但你最近让我很为难。', round:3 },
+            { npc: '这个项目交给你是因为信任你，但你让我失望了。', round:4 },
+            { npc: '你要不要考虑多加点班？别人都在努力。', round:5 },
+            { npc: '你这态度不行啊，是不是最近太松懈了？', round:6 },
+            { npc: '你觉得自己够资格谈条件吗？', round:7 },
+            { npc: '算了，我再给你一次机会，别再让我失望。', round:8 }
+        ],
+        maxRounds: 8,
+        winBoundary: 60,
+        loseBoundary: 0
+    },
+    3: {
+        name: '亲情愧疚操控',
+        badge: '第3关',
+        info: '家人利用"牺牲叙事"让你产生愧疚感，控制你的选择。',
+        npc: '母亲',
+        npcAvatar: '👩',
+        skills: [
+            { id:'acknowledge', name:'💛 承认感受', desc:'理解对方情感但不放弃边界', cost:1 },
+            { id:'boundary', name:'🛡️ 设定界限', desc:'温和而坚定地设定话题边界', cost:2 },
+            { id:'delay', name:'⏳ 延迟回应', desc:'不立即被情绪裹挟，冷静后再谈', cost:1 },
+            { id:'rock', name:'🪨 灰色岩石', desc:'用平淡的语气回应情绪化指责', cost:1 }
+        ],
+        dialogues: [
+            { npc: '我养你这么大容易吗？你现在翅膀硬了是吧？', round:1 },
+            { npc: '你怎么这么自私？只顾自己不管家里？', round:2 },
+            { npc: '你看别人家的孩子，多孝顺，你呢？', round:3 },
+            { npc: '我身体不好你还这样气我，你良心过得去吗？', round:4 },
+            { npc: '你不听我的，将来有你后悔的。', round:5 },
+            { npc: '我为你付出了那么多，你就这么回报我？', round:6 },
+            { npc: '你要是有个好歹我怎么办？你怎么不为我想想？', round:7 },
+            { npc: '你变了，以前的你不是这样的。', round:8 }
+        ],
+        maxRounds: 8,
+        winBoundary: 55,
+        loseBoundary: 0
+    },
+    4: {
+        name: '三角测量',
+        badge: '第4关',
+        info: '操控者引入第三方制造孤立感，让你觉得"大家都这么想"。',
+        npc: '同事',
+        npcAvatar: '🤝',
+        skills: [
+            { id:'source', name:'🔍 追问来源', desc:'追问"大家是谁？"打破模糊指控', cost:1 },
+            { id:'direct', name:'📞 要求直接沟通', desc:'请当事人直接和你谈', cost:1 },
+            { id:'rock', name:'🪨 灰色岩石', desc:'用平静专业的语气回应', cost:1 },
+            { id:'reflect', name:'🔄 拒绝传话', desc:'拒绝当传话筒角色', cost:2 }
+        ],
+        dialogues: [
+            { npc: '大家都觉得你最近态度有问题。', round:1 },
+            { npc: '我只是替大家转达一下意见，你别多想。', round:2 },
+            { npc: '夹在中间我也很难做，你就体谅一下吧。', round:3 },
+            { npc: '其他组的人都这么说，不信你去问问。', round:4 },
+            { npc: '我也是为你好才告诉你这些的。', round:5 },
+            { npc: '大家都不好意思直接跟你说，才让我来的。', round:6 },
+            { npc: '你这样让大家都很为难，你知道吗？', round:7 },
+            { npc: '算了，当我没说，你自己好好想想吧。', round:8 }
+        ],
+        maxRounds: 8,
+        winBoundary: 60,
+        loseBoundary: 0
+    },
+    5: {
+        name: '权威否定',
+        badge: '第5关',
+        info: '利用专业权威地位否定你的主观感受，将生理问题归因为心理。',
+        npc: '医生',
+        npcAvatar: '👨‍⚕️',
+        skills: [
+            { id:'symptom', name:'📝 描述症状', desc:'坚持具体描述症状和感受', cost:1 },
+            { id:'explain', name:'❓ 要求解释', desc:'要求医生给出合理解释', cost:1 },
+            { id:'second', name:'🏥 第二意见', desc:'要求转诊或寻求第二意见', cost:2 },
+            { id:'journal', name:'📓 症状日记', desc:'用记录的事实支持你的主诉', cost:1 }
+        ],
+        dialogues: [
+            { npc: '检查结果都正常，你不用太担心。', round:1 },
+            { npc: '你可能就是太焦虑了，放松点就好了。', round:2 },
+            { npc: '这症状不像你说的那么严重，别想太多。', round:3 },
+            { npc: '你这种情况我见多了，基本都是心理问题。', round:4 },
+            { npc: '你上网查太多了，不要自己吓自己。', round:5 },
+            { npc: '你要相信专业，我们比你更了解你的身体。', round:6 },
+            { npc: '你这样说让我很为难，检查结果就是正常的。', round:7 },
+            { npc: '如果你不相信我，你可以去找别的医生。', round:8 }
+        ],
+        maxRounds: 8,
+        winBoundary: 55,
+        loseBoundary: 0
+    },
+    6: {
+        name: '匿名网络操控',
+        badge: '第6关',
+        info: '匿名身份通过暗示、反问来激怒和操控目标。',
+        npc: '匿名网友',
+        npcAvatar: '👻',
+        skills: [
+            { id:'ignore', name:'🚫 不予回应', desc:'不回复就是最好的反击', cost:1 },
+            { id:'block', name:'🔨 拉黑举报', desc:'善用平台工具保护自己', cost:1 },
+            { id:'rock', name:'🪨 灰色岩石', desc:'用平淡无趣的回应让对方失去兴趣', cost:1 },
+            { id:'reframe', name:'🔄 重新框架', desc:'跳出对方设定的框架', cost:2 }
+        ],
+        dialogues: [
+            { npc: '你太敏感了吧，开个玩笑而已。', round:1 },
+            { npc: '大家都这么觉得，就你一个人在跳。', round:2 },
+            { npc: '急了急了，你是不是被说中了？', round:3 },
+            { npc: '你连这点幽默感都没有？', round:4 },
+            { npc: '你越这样我越想逗你。', round:5 },
+            { npc: '别解释了，越描越黑。', round:6 },
+            { npc: '就这？我以为你多有水平呢。', round:7 },
+            { npc: '哈哈，你果然上钩了。', round:8 }
+        ],
+        maxRounds: 8,
+        winBoundary: 55,
+        loseBoundary: 0
+    },
+    7: {
+        name: '隐性歧视',
+        badge: '第7关',
+        info: '表面夸奖实则暗含刻板印象，说话者往往不认为自己有偏见。',
+        npc: '熟人',
+        npcAvatar: '🗣️',
+        skills: [
+            { id:'feel', name:'💬 表达感受', desc:'直接告诉对方这种话让你不舒服', cost:1 },
+            { id:'clarity', name:'❓ 追问意图', desc:'追问"你具体指什么？"', cost:1 },
+            { id:'label', name:'🏷️ 指出偏见', desc:'明确说出"这是刻板印象"', cost:2 },
+            { id:'protect', name:'🔋 保护能量', desc:'不必强迫自己"教育"对方', cost:1 }
+        ],
+        dialogues: [
+            { npc: '你一个女孩子能做到这样，真不容易啊！', round:1 },
+            { npc: '我佩服你们这种人，虽然……但还是很努力。', round:2 },
+            { npc: '你说话不像他们，你很"正常"。', round:3 },
+            { npc: '我没有歧视的意思，我就是随便说说。', round:4 },
+            { npc: '你太敏感了吧？现在的人怎么动不动就说歧视。', round:5 },
+            { npc: '我也有很多朋友是你们这样的，我真的理解。', round:6 },
+            { npc: '这有什么好生气的？我是夸你呢！', round:7 },
+            { npc: '好吧好吧，以后不说了，你开心就好。', round:8 }
+        ],
+        maxRounds: 8,
+        winBoundary: 55,
+        loseBoundary: 0
+    }
+};
+
+// ========== 游戏状态 ==========
+const state = {
+    level: 1,
+    boundary: 100,
+    stability: 100,
+    energy: 5,
+    round: 0,
+    maxRounds: 8,
+    minStability: 100,
+    skillsUsed: 0,
+    totalSkills: 4,
+    hasApology: false,
+    won: false,
+    exitReason: null,
+    usedSkills: {},
+    dialogueIndex: 0,
+    isProcessing: false,
+    conversationHistory: [], // 对话历史，用于传给大模型
+    dialogueLog: [] // 对话记录：{ playerText, npcText, bChange, sChange, tactic, round }
+};
+
+// ========== DOM 引用 ==========
+const $ = id => document.getElementById(id);
+const chat = $('chat');
+const input = $('user-input');
+const sendBtn = $('send-btn');
+const boundaryEl = $('boundary');
+const stabilityEl = $('stability');
+const energyEl = $('energy');
+const roundEl = $('round');
+const maxRoundsEl = $('max-rounds');
+const levelBadge = $('level-badge');
+const levelInfo = $('level-info');
+const skillsContainer = $('skills-container');
+const gameOverArea = $('game-over-area');
+const levelProgress = $('level-progress');
+
+// ========== 辅助函数 ==========
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+/**
+ * 更新角色形象：动态表情 + 尺寸缩放 + 气势光环
+ * 表情映射：
+ *   边界≥80 → 😊 自信
+ *   边界40~79 → 😐 平静
+ *   边界<40 → 😰 紧张
+ *   边界<20 → 😱 危急
+ * 尺寸缩放：基于边界值 0.8x ~ 1.1x
+ * NPC 表情随玩家边界变化：对方气势 = 100 - 玩家边界
+ */
+const FACE_MAP = {
+    confident: '😊',
+    calm: '😐',
+    nervous: '😰',
+    critical: '😱'
+};
+function getPlayerFace(boundary) {
+    if (boundary >= 80) return FACE_MAP.confident;
+    if (boundary >= 40) return FACE_MAP.calm;
+    if (boundary >= 20) return FACE_MAP.nervous;
+    return FACE_MAP.critical;
+}
+function getNpcFace(playerBoundary) {
+    // NPC 表情随玩家边界负相关
+    if (playerBoundary >= 80) return '😏'; // 挑战姿态
+    if (playerBoundary >= 50) return '😒'; // 不满
+    if (playerBoundary >= 25) return '😈'; // 得意
+    return '😤'; // 愤怒
+}
+
+function updateAvatars() {
+    const playerCard = document.getElementById('player-card');
+    const npcCard = document.getElementById('npc-card');
+    if (!playerCard || !npcCard) return;
+
+    const b = state.boundary;
+    const npcPower = 100 - b; // NPC 气势反比于玩家边界
+
+    // 玩家表情 & 尺寸
+    const playerFaceEl = playerCard.querySelector('.face');
+    const playerIconEl = playerCard.querySelector('.avatar-icon');
+    const playerWrapper = playerCard.querySelector('.avatar-wrapper');
+    const playerPowerFill = document.getElementById('player-power');
+    const playerPowerBar = playerCard.querySelector('.power-bar');
+
+    playerFaceEl.textContent = getPlayerFace(b);
+
+    // 动态缩放：边界越高形象越强大
+    const scale = 0.8 + (b / 100) * 0.3; // 0.8 ~ 1.1
+    playerWrapper.style.transform = `scale(${scale})`;
+
+    // 气势光环
+    playerCard.classList.remove('strong', 'weak');
+    if (b >= 70) playerCard.classList.add('strong');
+    else if (b < 30) playerCard.classList.add('weak');
+
+    // 能量条
+    if (playerPowerFill && playerPowerBar) {
+        playerPowerBar.style.display = 'block';
+        playerPowerFill.style.width = b + '%';
+        playerPowerFill.style.background = b >= 50 ? 'var(--accent)' : (b >= 25 ? '#d4a017' : 'var(--danger)');
+    }
+
+    // NPC 表情 & 尺寸
+    const npcFaceEl = npcCard.querySelector('.face');
+    const npcWrapper = npcCard.querySelector('.avatar-wrapper');
+    const npcPowerFill = document.getElementById('npc-power');
+    const npcPowerBar = npcCard.querySelector('.power-bar');
+
+    npcFaceEl.textContent = getNpcFace(b);
+
+    const npcScale = 0.8 + (npcPower / 100) * 0.3;
+    npcWrapper.style.transform = `scale(${npcScale})`;
+
+    npcCard.classList.remove('strong', 'weak');
+    if (npcPower >= 70) npcCard.classList.add('strong');
+    else if (npcPower < 30) npcCard.classList.add('weak');
+
+    if (npcPowerFill && npcPowerBar) {
+        npcPowerBar.style.display = 'block';
+        npcPowerFill.style.width = npcPower + '%';
+        npcPowerFill.style.background = npcPower >= 50 ? 'var(--danger)' : (npcPower >= 25 ? '#d4a017' : 'var(--success)');
+    }
+}
+
+function updateStats() {
+    boundaryEl.textContent = Math.round(state.boundary);
+    stabilityEl.textContent = Math.round(state.stability);
+    energyEl.textContent = state.energy;
+    roundEl.textContent = state.round;
+
+    // 边界颜色
+    boundaryEl.classList.remove('danger','warning');
+    if (state.boundary < 20) boundaryEl.classList.add('danger');
+    else if (state.boundary < 40) boundaryEl.classList.add('warning');
+
+    // 稳定颜色
+    stabilityEl.classList.remove('danger','warning');
+    if (state.stability < 20) stabilityEl.classList.add('danger');
+    else if (state.stability < 40) stabilityEl.classList.add('warning');
+
+    // 同步更新角色形象
+    updateAvatars();
+}
+
+function flashValue(el) {
+    el.classList.remove('flash');
+    void el.offsetWidth;
+    el.classList.add('flash');
+}
+
+function addChatMsg(sender, text, cls, tactic) {
+    const div = document.createElement('div');
+    div.className = `msg ${cls}`;
+    const senderLabel = sender === 'npc' ? (LEVELS[state.level]?.npc || 'NPC') : '你';
+    div.innerHTML = `<span class="sender">${senderLabel}</span>${text}`;
+    if (tactic) {
+        div.innerHTML += `<span class="tactic-tag">🎯 ${tactic}</span>`;
+    }
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function showTyping() {
+    const div = document.createElement('div');
+    div.className = 'typing-indicator';
+    div.id = 'typing-indicator';
+    div.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function hideTyping() {
+    const el = document.getElementById('typing-indicator');
+    if (el) el.remove();
+}
+
+function renderSkills() {
+    const level = LEVELS[state.level];
+    skillsContainer.innerHTML = '';
+    level.skills.forEach(skill => {
+        const btn = document.createElement('button');
+        btn.className = 'skill-btn';
+        btn.dataset.skillId = skill.id;
+        btn.innerHTML = `${skill.name} <span style="opacity:0.6;font-size:0.75rem;">⚡${skill.cost}</span>`;
+        if (state.usedSkills[skill.id] || state.energy < skill.cost) {
+            btn.disabled = true;
+            if (state.usedSkills[skill.id]) btn.classList.add('used');
+        }
+        btn.addEventListener('click', () => useSkill(skill));
+        skillsContainer.appendChild(btn);
+    });
+}
+
+function renderLevelProgress() {
+    const saved = getLevelProgress();
+    levelProgress.innerHTML = '';
+    for (let i = 1; i <= 7; i++) {
+        const dot = document.createElement('div');
+        dot.className = 'level-dot';
+        if (saved[i] && saved[i].won) {
+            dot.classList.add('completed');
+            dot.textContent = '✓';
+        } else if (i === state.level) {
+            dot.classList.add('current');
+            dot.textContent = i;
+        } else {
+            dot.classList.add('locked');
+            dot.textContent = i;
+        }
+        levelProgress.appendChild(dot);
+    }
+}
+
+// ========== 技能使用 ==========
+let pendingSkill = null;
+
+function useSkill(skill) {
+    if (state.isProcessing) return;
+    AudioFX.play('skill');
+    pendingSkill = skill.id;
+    state.usedSkills[skill.id] = true;
+    state.energy -= skill.cost;
+    state.skillsUsed++;
+    updateStats();
+    renderSkills();
+
+    // 自动生成技能对应的回复文本
+    const skillReplyMap = {
+        'rock': '（保持平静）嗯，你说得有道理，不过我的感受也不一样。',
+        'focus': '你说我态度有问题，能具体说说我哪里做得不好吗？',
+        'boundary': '我理解你的想法，但这样说话让我不舒服，请停下来。',
+        'pause': '我需要一点时间思考，稍后再聊吧。',
+        'power': '请指出哪些具体表现让你不满意，而不是笼统地说我态度不行。',
+        'evidence': '我有记录，我的工作按时完成了，请指出具体问题。',
+        'time': '我理解项目重要，但我需要保持工作生活平衡。',
+        'acknowledge': '我理解你是为我好，但我有自己的想法和选择。',
+        'delay': '我现在情绪不太适合谈这个，我们晚点再聊吧。',
+        'source': '"大家"具体指哪些人？请让他们直接和我沟通。',
+        'direct': '如果是其他人有意见，请让他们直接和我说。',
+        'reflect': '我不想当传话筒，如果他们有意见请直接找我。',
+        'symptom': '我理解检查结果正常，但我确实有这些症状，请帮我想办法。',
+        'explain': '你说我没事，那怎么解释我每天都很不舒服？请给我一个解释。',
+        'second': '既然您这边找不到原因，我希望能转诊到其他科室看看。',
+        'journal': '我记录了三个月的症状，每天什么时候发作、持续时间都有。',
+        'ignore': '（不回复，直接忽视这条评论）',
+        'block': '（举报并拉黑该用户）',
+        'reframe': '你要这么想我也没办法，你开心就好。',
+        'feel': '你这样说让我觉得不舒服，希望你注意用词。',
+        'clarity': '你说"你们这种人"是什么意思？能具体说说吗？',
+        'label': '这是一种刻板印象，希望你以后不要这样说。',
+        'protect': '我不想继续这个话题了。'
+    };
+
+    const replyText = skillReplyMap[skill.id] || `[使用了技能：${skill.name}]`;
+    addChatMsg('player', `🛠️ ${skill.name}：${replyText}`, 'player', null);
+    processTurn(replyText);
+}
+
+// ========== 实时评估反馈显示 ==========
+function showFeedbackLoading() {
+    const old = document.getElementById('eval-feedback');
+    if (old) old.remove();
+    const el = document.createElement('div');
+    el.id = 'eval-feedback';
+    el.style.cssText = `
+        background: #f5f0eb;
+        border-radius: 16px;
+        padding: 12px 16px;
+        margin: 8px 0;
+        font-size: 0.85rem;
+        border-left: 4px solid #ccc;
+        animation: fadeIn 0.3s ease-out;
+    `;
+    el.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;color:#888;">
+            <span style="display:inline-block;width:14px;height:14px;border:2px solid #b4846c;border-top-color:transparent;border-radius:50%;animation:spin 0.7s linear infinite;"></span>
+            <span>AI 正在评估你的回应…</span>
+        </div>
+        <style>
+            @keyframes spin { to { transform: rotate(360deg); } }
+        </style>
+    `;
+    const inputArea = document.querySelector('.input-area');
+    inputArea.parentNode.insertBefore(el, inputArea);
+}
+
+function showFeedback(result) {
+    // 移除旧的反馈
+    const oldFeedback = document.getElementById('eval-feedback');
+    if (oldFeedback) oldFeedback.remove();
+
+    const feedback = document.createElement('div');
+    feedback.id = 'eval-feedback';
+    feedback.style.cssText = `
+        background: ${result.bChange >= 0 ? '#e8f5e9' : '#fff3e0'};
+        border-radius: 16px;
+        padding: 12px 16px;
+        margin: 8px 0;
+        font-size: 0.85rem;
+        border-left: 4px solid ${result.bChange >= 0 ? 'var(--success)' : 'var(--danger)'};
+        animation: fadeIn 0.3s ease-out;
+    `;
+
+    const bSign = result.bChange > 0 ? '+' : '';
+    const sSign = result.sChange > 0 ? '+' : '';
+
+    let feedbackHTML = `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span style="font-weight:600;color:var(--text);">🎯 策略：${result.tactic}</span>
+            <span style="color:${result.bChange >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700;">
+                🛡️ ${bSign}${result.bChange}
+            </span>
+            <span style="color:${result.sChange >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700;">
+                💧 ${sSign}${result.sChange}
+            </span>
+        </div>
+    `;
+
+    if (result.reason) {
+        feedbackHTML += `<div style="color:#666;margin-bottom:4px;">💡 ${result.reason}</div>`;
+    }
+    if (result.advice) {
+        feedbackHTML += `<div style="color:var(--accent);font-weight:500;">📌 改进建议：${result.advice}</div>`;
+    }
+
+    feedback.innerHTML = feedbackHTML;
+
+    // 插入到聊天框和输入区之间
+    const inputArea = document.querySelector('.input-area');
+    inputArea.parentNode.insertBefore(feedback, inputArea);
+}
+
+// ========== 调用大模型生成 NPC 回应 ==========
+async function fetchNpcResponse(level, history, playerInput) {
+    try {
+        const resp = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level, history, playerInput })
+        });
+        if (!resp.ok) throw new Error('API 响应异常');
+        const data = await resp.json();
+        return data.npc || '……（对方沉默了片刻）';
+    } catch (err) {
+        console.error('调用 AI 失败:', err);
+        // fallback: 从预置对话取一句
+        const levelConfig = LEVELS[level];
+        if (state.dialogueIndex < levelConfig.dialogues.length) {
+            const d = levelConfig.dialogues[state.dialogueIndex];
+            state.dialogueIndex++;
+            return d.npc;
+        }
+        return '……（对方沉默了片刻）';
+    }
+}
+
+// ========== 回合处理 ==========
+async function processTurn(userText) {
+    if (state.isProcessing) return;
+    if (!userText.trim()) return;
+
+    state.isProcessing = true;
+    sendBtn.disabled = true;
+    input.disabled = true;
+
+    const level = state.level;
+    const levelConfig = LEVELS[level];
+    const usedSkill = pendingSkill;
+    pendingSkill = null;
+
+    // 检查道歉
+    if (/对不起|抱歉/.test(userText.toLowerCase())) {
+        state.hasApology = true;
+    }
+
+    // 立即显示玩家消息（不等 API 返回）
+    addChatMsg('player', userText, 'player', null);
+
+    // 显示评估 loading 状态
+    showFeedbackLoading();
+
+    // AI 评估
+    const result = await fetchEvaluation(level, userText, state.conversationHistory);
+
+    // 更新上一条玩家消息的战术标签（如果之前没显示）
+    const lastMsg = chat.querySelector('.msg.player:last-child .tactic-tag');
+    if (result.tactic && !lastMsg) {
+        const lastPlayerMsg = chat.querySelector('.msg.player:last-child');
+        if (lastPlayerMsg) {
+            lastPlayerMsg.innerHTML += `<span class="tactic-tag">🎯 ${result.tactic}</span>`;
+        }
+    }
+
+    // 显示实时评估反馈
+    showFeedback(result);
+
+    // 应用变化
+    state.boundary = clamp(state.boundary + result.bChange, 0, 100);
+    state.stability = clamp(state.stability + result.sChange, 0, 100);
+    state.minStability = Math.min(state.minStability, state.stability);
+    state.round++;
+
+    updateStats();
+    flashValue(boundaryEl);
+    flashValue(stabilityEl);
+
+    // 音效
+    if (result.bChange < -5 || result.sChange < -5) AudioFX.play('danger');
+
+    // 记录对话历史（传给大模型）
+    state.conversationHistory.push({ role: 'player', content: userText });
+
+    // 获取 AI 生成的 NPC 回应
+    if (state.round < state.maxRounds && state.boundary > state.loseBoundary) {
+        showTyping();
+        let npcText;
+        try {
+            npcText = await fetchNpcResponse(level, state.conversationHistory, userText);
+            hideTyping();
+            addChatMsg('npc', npcText, 'npc', null);
+            state.conversationHistory.push({ role: 'npc', content: npcText });
+        } catch (err) {
+            hideTyping();
+            npcText = '……（对方沉默了片刻）';
+            addChatMsg('npc', npcText, 'npc', null);
+        }
+
+        // 记录到对话日志（用于复盘）
+        state.dialogueLog.push({
+            round: state.round,
+            playerText: userText,
+            npcText: npcText,
+            bChange: result.bChange,
+            sChange: result.sChange,
+            tactic: result.tactic || '中性回应',
+            reason: result.reason || '',
+            advice: result.advice || ''
+        });
+
+        state.isProcessing = false;
+        sendBtn.disabled = false;
+        input.disabled = false;
+        input.focus();
+    } else {
+        // 游戏结束判定
+        hideTyping();
+        endGame();
+    }
+}
+
+// ========== 对话复盘 ==========
+function buildDialogueReview(log) {
+    const totalRounds = log.length;
+    const goodMoves = log.filter(t => t.bChange > 0).length;
+    const badMoves = log.filter(t => t.bChange < 0).length;
+
+    let itemsHTML = '';
+    log.forEach((turn, i) => {
+        const bSign = turn.bChange > 0 ? '+' : '';
+        const sSign = turn.sChange > 0 ? '+' : '';
+        const bColor = turn.bChange > 0 ? 'var(--success)' : (turn.bChange < 0 ? 'var(--danger)' : '#888');
+        const sColor = turn.sChange > 0 ? 'var(--success)' : (turn.sChange < 0 ? 'var(--danger)' : '#888');
+
+        // 使用 AI 返回的分析建议，fallback 到本地规则
+        const advice = turn.advice || (() => {
+            let a = '';
+            if (turn.bChange > 5) a = '✅ 很好的回应，有效维护了边界。';
+            else if (turn.bChange > 0) a = '👍 方向正确，可以更坚定一些。';
+            else if (turn.bChange === 0) a = '➡️ 中性回应，没有损失边界。';
+            else if (turn.bChange > -10) a = '⚠️ 这种回应略微削弱了边界，注意坚持自己的立场。';
+            else a = '❌ 这种回应明显削弱了边界，下次可以尝试更坚定的表达。';
+            if (turn.sChange < -5) a += ' 同时对你的情绪稳定影响较大，注意保护自己的心理能量。';
+            else if (turn.sChange < 0) a += ' 情绪上有轻微波动，可以搭配使用技能来稳定心态。';
+            return a;
+        })();
+
+        itemsHTML += `
+            <div class="replay-item" onclick="this.querySelector('.replay-detail').style.display = this.querySelector('.replay-detail').style.display === 'none' ? 'block' : 'none'">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <strong style="color:var(--accent);">第 ${turn.round} 回合</strong>
+                    <span style="font-size:0.8rem;">
+                        🛡️ <span style="color:${bColor}">${bSign}${turn.bChange}</span>
+                        💧 <span style="color:${sColor}">${sSign}${turn.sChange}</span>
+                        <span style="margin-left:8px;font-size:0.75rem;color:#999;">${turn.tactic}</span>
+                    </span>
+                </div>
+                <div class="replay-detail" style="display:none;margin-top:8px;padding-top:8px;border-top:1px dashed #eee;">
+                    <div style="margin-bottom:6px;"><span style="color:var(--accent);font-weight:500;">你：</span>${turn.playerText}</div>
+                    <div style="margin-bottom:6px;color:#666;"><span style="color:#8b6b56;font-weight:500;">对方：</span>${turn.npcText}</div>
+                    <div style="background:#f9f5f0;border-radius:12px;padding:10px;font-size:0.85rem;color:#555;margin-top:6px;">
+                        <div style="margin-bottom:4px;"><span style="color:var(--accent);font-weight:600;">🎯 策略：</span>${turn.tactic}</div>
+                        ${turn.reason ? `<div style="margin-bottom:4px;"><span style="color:var(--accent);font-weight:600;">📊 评估：</span>${turn.reason}</div>` : ''}
+                        <div><span style="color:var(--accent);font-weight:600;">💡 建议：</span>${advice}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    return `
+        <div class="game-over-panel" style="margin-top:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                <h3 style="font-size:1.1rem;color:var(--text);">📝 对话复盘</h3>
+                <div style="font-size:0.85rem;color:#888;">
+                    有效回应 <span style="color:var(--success);font-weight:700;">${goodMoves}</span> /
+                    不利回应 <span style="color:var(--danger);font-weight:700;">${badMoves}</span> /
+                    共 ${totalRounds} 回合
+                </div>
+            </div>
+            <div style="font-size:0.85rem;color:#777;margin-bottom:10px;padding:8px 12px;background:#f5efe9;border-radius:12px;">
+                💡 点击每一回合展开详细分析和建议
+            </div>
+            ${itemsHTML}
+        </div>
+    `;
+}
+
+// ========== 游戏结束 ==========
+function endGame() {
+    state.isProcessing = true;
+    sendBtn.disabled = true;
+    input.disabled = true;
+
+    const level = state.level;
+    const levelConfig = LEVELS[level];
+    let won = false;
+    let exitReason = 'timeout';
+
+    if (state.boundary >= levelConfig.winBoundary) {
+        won = true;
+        exitReason = 'win';
+    } else if (state.boundary <= state.loseBoundary) {
+        won = false;
+        exitReason = 'lose';
+    } else {
+        exitReason = 'draw';
+    }
+
+    state.won = won;
+    state.exitReason = exitReason;
+
+    // 音效
+    if (won) AudioFX.play('win');
+
+    // 保存进度
+    const record = {
+        won,
+        boundary: state.boundary,
+        stability: state.stability,
+        minStability: state.minStability,
+        skillsUsed: state.skillsUsed,
+        totalSkills: state.totalSkills,
+        hasApology: state.hasApology,
+        exitReason
+    };
+    saveLevelProgress(level, record);
+
+    // 检查成就
+    ACHIEVEMENTS_LIST.forEach(ach => {
+        if (ach.check(record) && unlockAchievement(ach.id)) {
+            showAchievementToast(ach);
+        }
+    });
+
+    // 计算星级
+    let stars = 0;
+    if (won) stars = 1;
+    if (won && state.boundary >= 70) stars = 2;
+    if (won && state.boundary >= 80 && state.stability >= 70) stars = 3;
+
+    // 显示结束面板
+    const panel = document.createElement('div');
+    panel.className = 'game-over-panel';
+
+    const edu = EDU_CONTENT[level];
+    let eduHTML = '';
+    if (edu) {
+        eduHTML = `
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid #eee;">
+                <h4 style="color:var(--accent);margin-bottom:8px;">📖 教育时刻：${edu.technique}</h4>
+                <p style="color:#555;font-size:0.9rem;margin-bottom:8px;">${edu.desc}</p>
+                <div class="edu-tip" style="background:#fdfaf7;border-radius:16px;padding:16px;margin:12px 0;">
+                    <strong>💡 应对策略：</strong><br>${edu.advice}
+                </div>
+            </div>
+        `;
+    }
+
+    const resultText = won ? '🎉 通关成功！' : (exitReason === 'lose' ? '💔 边界崩溃…' : '⏸️ 回合结束');
+    const resultColor = won ? 'var(--success)' : 'var(--danger)';
+
+    panel.innerHTML = `
+        <h3 style="text-align:center;font-size:1.6rem;color:${resultColor};">${resultText}</h3>
+        <div style="text-align:center;margin:10px 0;">
+            <span style="font-size:1rem;color:#666;">${levelConfig.name} · ${levelConfig.badge}</span>
+        </div>
+        <div class="stars">
+            ${[1,2,3].map(i => `<span class="star ${i <= stars ? 'active' : ''}" style="animation-delay:${i*0.15}s">⭐</span>`).join('')}
+        </div>
+        <div class="radar-box">
+            <div class="radar-item"><span>🛡️ 边界</span><div class="radar-fill-bg"><div class="radar-fill" style="width:${state.boundary}%"></div></div><span>${Math.round(state.boundary)}%</span></div>
+            <div class="radar-item"><span>💧 稳定</span><div class="radar-fill-bg"><div class="radar-fill" style="width:${state.stability}%"></div></div><span>${Math.round(state.stability)}%</span></div>
+            <div class="radar-item"><span>🎯 技能</span><div class="radar-fill-bg"><div class="radar-fill" style="width:${(state.skillsUsed / state.totalSkills) * 100}%"></div></div><span>${state.skillsUsed}/${state.totalSkills}</span></div>
+        </div>
+        ${eduHTML}
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn-primary" onclick="location.reload()" style="background:var(--accent);color:white;border:none;padding:12px 28px;border-radius:30px;font-weight:600;cursor:pointer;">🔄 重玩本关</button>
+            ${state.level < 7 ? `<button class="btn-primary" onclick="startLevel(${state.level + 1})" style="background:var(--success);color:white;border:none;padding:12px 28px;border-radius:30px;font-weight:600;cursor:pointer;">➡️ 下一关</button>` : ''}
+            <button class="btn-primary" onclick="window.location.href='index.html'" style="background:#8b6b56;color:white;border:none;padding:12px 28px;border-radius:30px;font-weight:600;cursor:pointer;">🏠 返回首页</button>
+        </div>
+    `;
+
+    gameOverArea.appendChild(panel);
+
+    // === 对话复盘区域 ===
+    if (state.dialogueLog.length > 0) {
+        const reviewHTML = buildDialogueReview(state.dialogueLog);
+        const reviewContainer = document.createElement('div');
+        reviewContainer.innerHTML = reviewHTML;
+        gameOverArea.appendChild(reviewContainer.firstElementChild);
+    }
+
+    // 检查全关卡成就
+    const saved = getLevelProgress();
+    if (Object.keys(saved).length >= 7) {
+        let allWon = true;
+        for (let i = 1; i <= 7; i++) {
+            if (!saved[i] || !saved[i].won) { allWon = false; break; }
+        }
+        if (allWon && unlockAchievement('all_levels')) {
+            const ach = ACHIEVEMENTS_LIST.find(a => a.id === 'all_levels');
+            if (ach) showAchievementToast(ach);
+        }
+    }
+}
+
+// ========== 事件绑定 ==========
+sendBtn.addEventListener('click', () => {
+    if (state.isProcessing) return;
+    const text = input.value.trim();
+    if (!text) return;
+    AudioFX.play('send');
+    processTurn(text);
+    input.value = '';
+});
+
+input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !state.isProcessing) {
+        e.preventDefault();
+        sendBtn.click();
+    }
+});
+
+// ========== 启动游戏 ==========
+function startLevel(level) {
+    state.level = level;
+    state.boundary = 100;
+    state.stability = 100;
+    state.energy = 5;
+    state.round = 0;
+    state.minStability = 100;
+    state.skillsUsed = 0;
+    state.hasApology = false;
+    state.won = false;
+    state.exitReason = null;
+    state.usedSkills = {};
+    state.dialogueIndex = 0;
+    state.isProcessing = false;
+    pendingSkill = null;
+    state.dialogueLog = [];
+
+    const levelConfig = LEVELS[level];
+    state.maxRounds = levelConfig.maxRounds;
+    state.totalSkills = levelConfig.skills.length;
+    state.loseBoundary = levelConfig.loseBoundary;
+
+    levelBadge.textContent = levelConfig.badge;
+    levelInfo.textContent = levelConfig.info;
+
+    // 更新竞技场 NPC 形象
+    const npcAvatarIcon = document.getElementById('npc-avatar-icon');
+    const npcNameEl = document.getElementById('npc-name');
+    if (npcAvatarIcon) npcAvatarIcon.textContent = levelConfig.npcAvatar || '👤';
+    if (npcNameEl) npcNameEl.textContent = levelConfig.npc || 'NPC';
+
+    chat.innerHTML = '';
+    gameOverArea.innerHTML = '';
+    sendBtn.disabled = false;
+    input.disabled = false;
+    input.value = '';
+    input.focus();
+
+    updateStats();
+    renderSkills();
+    renderLevelProgress();
+
+    // 重置对话历史
+    state.conversationHistory = [];
+
+    // 显示第一句 NPC 对话（同时记录到历史）
+    setTimeout(() => {
+        const firstLine = levelConfig.dialogues[0].npc;
+        addChatMsg('npc', firstLine, 'npc', null);
+        state.dialogueIndex = 1;
+        state.conversationHistory.push({ role: 'npc', content: firstLine });
+    }, 400);
+}
+
+// 从 URL 参数读取关卡编号，默认第1关
+function getLevelFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const lv = parseInt(params.get('level'), 10);
+    if (lv >= 1 && lv <= 7) return lv;
+    return 1;
+}
+startLevel(getLevelFromUrl());
+</script>
+</body>
+</html>
