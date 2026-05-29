@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 10,
+      "memory": 128
+    }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ],
+  "cleanUrls": true
+}
